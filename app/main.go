@@ -1,63 +1,59 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"log"
+	"io"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+	"text/template"
 
-	"github.com/julienschmidt/httprouter"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
-func newRouter() *httprouter.Router {
-	mux := httprouter.New()
-	mux.GET("/test", getHoliday())
-	return mux
+// TemplateRenderer is a custom html/template renderer for Echo framework
+type TemplateRenderer struct {
+	templates *template.Template
 }
 
-func getHoliday() httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		w.Write([]byte("amdg epic boss moment my dude"))
+// Render renders a template document
+func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+
+	// Add global methods if data is a map
+	if viewContext, isMap := data.(map[string]interface{}); isMap {
+		viewContext["reverse"] = c.Echo().Reverse
 	}
+
+	return t.templates.ExecuteTemplate(w, name, data)
 }
 
 func main() {
-	srv := &http.Server{
-		Addr:    ":10101",
-		Handler: newRouter(),
-	}
+	// Echo instance
+	e := echo.New()
 
-	idleConnsClosed := make(chan struct{})
-	go func() {
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt)
-		signal.Notify(sigint, syscall.SIGTERM)
-		<-sigint
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
 
-		log.Println("service interrupt recieved")
+	// Routes
+	e.GET("/", hello)
+	e.GET("/god", god)
+	e.GET("/show", show)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	// Start server
+	e.Logger.Fatal(e.Start(":1323"))
+}
 
-		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("http server shutdown error : %v", err)
-		}
+// Handler
+func hello(c echo.Context) error {
+	return c.String(http.StatusOK, "Hello, World!")
+}
 
-		log.Println("shutdown complete")
-		close(idleConnsClosed)
-	}()
+func god(c echo.Context) error {
+	return c.String(http.StatusOK, "god")
+}
 
-	log.Printf("starting server")
-
-	if err := srv.ListenAndServe(); err != nil {
-		if !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal("fatal htpp server failed to start: %v", err)
-		}
-	}
-	<-idleConnsClosed
-	log.Println("service stop")
+func show(c echo.Context) error {
+	// Get team and member from the query string
+	team := c.QueryParam("team")
+	member := c.QueryParam("member")
+	return c.String(http.StatusOK, "team:"+team+", member:"+member)
 }
